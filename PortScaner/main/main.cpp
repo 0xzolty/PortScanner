@@ -6,17 +6,17 @@
 int main() {
 	WSADATA wsaData;
 	
-	// inicjacja winsocket api z wersja 2 , 2 i przypisanie do int result w celu odczutania bledow 
+	// initialize Winsock 2.2 result holds the error code
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	
-	//sprawdzenie dzialania winsocket
+	// check if winsock work 
 	if (result != 0) {
 		std::cerr << "błąd , kod błedu : "<< result << std::endl;
 		getchar();
 		return 1;
 
 	}
-	// zamknicie socket api 
+	// close socket api 
 	WSACleanup();
 
 	getchar();
