@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="PortScaner/PortScaner.vcxproj" Id="5527bfcb-b927-4983-b043-4c68fc9d7997" />
+</Solution>
