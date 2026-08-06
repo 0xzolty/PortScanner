@@ -11,11 +11,39 @@ int main() {
 	
 	// check if winsock work 
 	if (result != 0) {
-		std::cerr << "błąd , kod błedu : "<< result << std::endl;
+		std::cerr << "fail ,fail code : "<< result << std::endl;
 		getchar();
 		return 1;
 
 	}
+
+	// initialize socket with ipv4, reliable transmission, tcp and error check
+	SOCKET soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (soc == INVALID_SOCKET) {
+		std::cerr << "fail to connect ,fail code : " << WSAGetLastError() << std::endl;
+		getchar();
+		return 1;
+
+	}
+	sockaddr_in target;
+	target.sin_family = AF_INET;
+	target.sin_port = htons(80);
+
+	int addrResult = inet_pton(AF_INET, "127.0.0.1", &target.sin_addr);
+
+	if (addrResult == 0) {
+		std::cerr << "wrong ip format, please put correct one eg. 127.0.0.1" << std::endl;
+		getchar();
+		return 1;
+	}
+	else if (addrResult == -1) {
+		std::cerr << "error: " << WSAGetLastError() << std::endl;
+		getchar();
+		return 1;
+	}
+	
+	//close socket 
+	closesocket(soc);
 	// close socket api 
 	WSACleanup();
 
