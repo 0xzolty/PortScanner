@@ -25,12 +25,17 @@ int main() {
 		return 1;
 
 	}
+
+	// create target virable with sockaddr_in 
 	sockaddr_in target;
 	target.sin_family = AF_INET;
 	target.sin_port = htons(80);
 
+	// chose destenity  
+
 	int addrResult = inet_pton(AF_INET, "127.0.0.1", &target.sin_addr);
 
+	// error / user issue check 
 	if (addrResult == 0) {
 		std::cerr << "wrong ip format, please put correct one eg. 127.0.0.1" << std::endl;
 		getchar();
@@ -38,7 +43,7 @@ int main() {
 	}
 	else if (addrResult == -1) {
 		std::cerr << "error: " << WSAGetLastError() << std::endl;
-		getchar();
+		getchar();z
 		return 1;
 	}
 	
