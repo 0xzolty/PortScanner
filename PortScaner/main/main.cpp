@@ -33,7 +33,7 @@ int main() {
 
 	// chose destenity  
 
-	int addrResult = inet_pton(AF_INET, "127.0.0.1", &target.sin_addr);
+	int addrResult = inet_pton(AF_INET, "1.1.1.1", &target.sin_addr);
 
 	// error / user issue check 
 	if (addrResult == 0) {
@@ -43,12 +43,22 @@ int main() {
 	}
 	else if (addrResult == -1) {
 		std::cerr << "error: " << WSAGetLastError() << std::endl;
-		getchar();z
+		getchar();
 		return 1;
 	}
-	
+
+	// establish connection check if port is open 
+	int con = connect(soc, (sockaddr*)&target, sizeof(target));
+	if (con == SOCKET_ERROR) {
+		std::cerr << "error " << WSAGetLastError() << std::endl;
+		getchar();
+	}
+	else{
+		std::cout << "port open" << std::endl;
+	}
 	//close socket 
 	closesocket(soc);
+	
 	// close socket api 
 	WSACleanup();
 
