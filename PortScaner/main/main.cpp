@@ -9,6 +9,10 @@
 int main() {
 	WSADATA wsaData;
 	
+	int open = 0;
+	int close = 0;
+	int timeoutCount = 0;
+	
 	// initialize Winsock 2.2 result holds the error code
 
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -121,6 +125,7 @@ int main() {
 
 				if (selectResult == 0) {
 					std::cout << "port " << port << " timeout / filtered" << std::endl;
+					timeoutCount++;
 				}
 				else if (selectResult == SOCKET_ERROR) {
 					std::cerr << "select error: " << WSAGetLastError() << std::endl;
@@ -136,9 +141,11 @@ int main() {
 					}
 					else if (SError == 0) {
 						std::cout << "port " << port << " open" << std::endl;
+						open++;
 					}
 					else if (SError == WSAECONNREFUSED) {
 						std::cout << "port " << port << " closed" << std::endl;
+						close++;
 					}
 					else {
 						std::cout << "port " << port << " unknown error: " << SError << std::endl;
@@ -147,6 +154,7 @@ int main() {
 			}
 			else if (errorCode == WSAECONNREFUSED) {
 				std::cout << "port " << port << " closed" << std::endl;
+				close++;
 			
 			}
 			else {
@@ -156,13 +164,20 @@ int main() {
 			}
 			else {
 				std::cout << "port " << port << " open" << std::endl;
+				open++;
 			}
 
 		// close socket
 
 		closesocket(soc);
 	}
-		
+	
+	// timeout , close , open ports count 
+
+	std::cout << "port(s) open : " << open << std::endl;
+	std::cout << "port(s) closed : " << close << std::endl; 
+	std::cout << "total ports scanned : " << portto - portfrom + 1 << std::endl;
+	std::cout << "total timeouted port(s) : " << timeoutCount << std::endl; 
 	
 	// clean socket api 
 
