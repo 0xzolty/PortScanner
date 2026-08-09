@@ -8,6 +8,7 @@
 
 int main() {
 	WSADATA wsaData;
+	
 	// initialize Winsock 2.2 result holds the error code
 
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -85,14 +86,14 @@ int main() {
 
 		if (nonblockingsoc == SOCKET_ERROR) {
 			std::cerr << "error" << WSAGetLastError() << std::endl;
-			WSACleanup();
+			
 			closesocket(soc);
+			WSACleanup();
 			getchar();
 			return 0;
 		}
 
 		// create target virable with sockaddr_in 
-
 
 		target.sin_port = htons(port);
 
@@ -104,24 +105,65 @@ int main() {
 			int errorCode = WSAGetLastError();
 
 			if (errorCode == WSAEWOULDBLOCK) {
-				select()
+
+				fd_set writeSet;
+				fd_set errorSet;
+				FD_ZERO(&writeSet);
+				FD_ZERO(&errorSet);
+				FD_SET(soc, &writeSet);
+				FD_SET(soc, &errorSet);
+
+				timeval timeout{};
+				timeout.tv_sec = 2;
+				timeout.tv_usec = 0;
+
+				int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
+
+				if (selectResult == 0) {
+					std::cout << "port " << port << " timeout / filtered" << std::endl;
+				}
+				else if (selectResult == SOCKET_ERROR) {
+					std::cerr << "select error: " << WSAGetLastError() << std::endl;
+				}
+				else {
+
+					int SError = 0;
+					int SErrorSize = sizeof(SError);
+					int getResult = getsockopt(soc, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&SError), &SErrorSize);
+
+					if (getResult == SOCKET_ERROR) {
+						std::cerr << "getsockopt error: " << WSAGetLastError() << std::endl;
+					}
+					else if (SError == 0) {
+						std::cout << "port " << port << " open" << std::endl;
+					}
+					else if (SError == WSAECONNREFUSED) {
+						std::cout << "port " << port << " closed" << std::endl;
+					}
+					else {
+						std::cout << "port " << port << " unknown error: " << SError << std::endl;
+					}
+				}
+			}
+			else if (errorCode == WSAECONNREFUSED) {
+				std::cout << "port " << port << " closed" << std::endl;
+			
 			}
 			else {
-				std::cout << "port closed";
-				WSACleanup();
-				closesocket(soc);
-				getchar();
-				return 0;
+				std::cout << "port " << port << " unknown error: " << errorCode << std::endl;
 			}
-		}
-		else {
-			std::cout << "port open" << std::endl;
-		}
+			
+			}
+			else {
+				std::cout << "port " << port << " open" << std::endl;
+			}
 
-		// close socket 
+		// close socket
 
 		closesocket(soc);
 	}
+		
+	
 	// clean socket api 
 
 	WSACleanup();
