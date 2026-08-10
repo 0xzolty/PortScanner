@@ -66,6 +66,8 @@ int main() {
 	int close = 0;
 	int timeoutCount = 0;
 	
+	int speed  = 0;
+
 	// initialize Winsock 2.2 result holds the error code
 
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -88,6 +90,15 @@ int main() {
 	std::cout << "give last port to scan : " << std::endl;
 	std::cin >> portto;
 
+	std::cout << "chose speed of the scan from 1 to 10s : ";
+	std::cin >> speed;
+	if (speed < 1 || speed > 10) {
+		std::cout << "wrong speed (1-10s) : " << std::endl;
+
+		WSACleanup();
+		getchar();
+		return 0;
+	}
 	// chose destenity 
 
 	std::string ip_port;
@@ -171,7 +182,7 @@ int main() {
 				FD_SET(soc, &errorSet);
 
 				timeval timeout{};
-				timeout.tv_sec = 2;
+				timeout.tv_sec = speed;
 				timeout.tv_usec = 0;
 
 				int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
