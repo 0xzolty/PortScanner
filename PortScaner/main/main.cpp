@@ -3,8 +3,61 @@
 #pragma comment(lib, "ws2_32.lib")
 #include <iostream>
 #include <string>
+#include <array>
 
+struct Service {
+	int port;
+	const char* name;
+};
 
+const std::array<Service, 31> services = { {
+	{20, "FTP data"},
+	{21, "FTP control"},
+	{22, "SSH"},
+	{23, "Telnet"},
+	{25, "SMTP"},
+	{53, "DNS"},
+	{80, "HTTP"},
+	{110, "POP3"},
+	{111, "RPCbind"},
+	{135, "Microsoft RPC"},
+	{139, "NetBIOS Session"},
+	{143, "IMAP"},
+	{389, "LDAP"},
+	{443, "HTTPS"},
+	{445, "SMB"},
+	{465, "SMTPS"},
+	{587, "SMTP Submission"},
+	{636, "LDAPS"},
+	{993, "IMAPS"},
+	{995, "POP3S"},
+	{1433, "Microsoft SQL Server"},
+	{1521, "Oracle Database"},
+	{2049, "NFS"},
+	{3306, "MySQL"},
+	{3389, "RDP"},
+	{5432, "PostgreSQL"},
+	{5900, "VNC"},
+	{6379, "Redis"},
+	{8080, "HTTP alternative"},
+	{8443, "HTTPS alternative"},
+	{27017, "MongoDB"}
+} };
+
+//checking if port number is in suggested port services array
+
+void ServiceCheck(int port) {
+	for (const Service& service : services) {
+		if (service.port == port) {
+			std::cout << "suggested service: " << service.name << std::endl << std::endl;
+
+			return;
+		}
+	}
+
+	std::cout << "suggested service: unknown"
+		<< std::endl << std::endl;
+}
 
 int main() {
 	WSADATA wsaData;
@@ -71,7 +124,7 @@ int main() {
 	}
 
 	for (int port = portfrom; port <= portto; ++port) {
-		std::cout << "scaning ports " << port << std::endl;
+		std::cout << "scaning port " << port << std::endl;
 
 		// initialize socket with ipv4, reliable transmission, tcp and error check
 
@@ -124,11 +177,11 @@ int main() {
 				int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
 
 				if (selectResult == 0) {
-					std::cout << "port " << port << " timeout / filtered" << std::endl;
+					std::cout << "port " << port << " timeout / filtered" << std::endl << std::endl;
 					timeoutCount++;
 				}
 				else if (selectResult == SOCKET_ERROR) {
-					std::cerr << "select error: " << WSAGetLastError() << std::endl;
+					std::cerr << "select error: " << WSAGetLastError() << std::endl << std::endl;
 				}
 				else {
 
@@ -140,8 +193,10 @@ int main() {
 						std::cerr << "getsockopt error: " << WSAGetLastError() << std::endl;
 					}
 					else if (SError == 0) {
-						std::cout << "port " << port << " open" << std::endl;
+						std::cout << "port " << port << " open" << std::endl  ;
 						open++;
+						ServiceCheck(port);
+						
 					}
 					else if (SError == WSAECONNREFUSED) {
 						std::cout << "port " << port << " closed" << std::endl;
@@ -153,18 +208,20 @@ int main() {
 				}
 			}
 			else if (errorCode == WSAECONNREFUSED) {
-				std::cout << "port " << port << " closed" << std::endl;
+				std::cout << "port " << port << " closed" << std::endl << std::endl;
 				close++;
 			
 			}
 			else {
-				std::cout << "port " << port << " unknown error: " << errorCode << std::endl;
+				std::cout << "port " << port << " unknown error: " << errorCode << std::endl << std::endl;
 			}
 			
 			}
 			else {
-				std::cout << "port " << port << " open" << std::endl;
+				std::cout << "port " << port << " open" << std::endl << std::endl;
 				open++;
+				ServiceCheck(port);
+
 			}
 
 		// close socket
