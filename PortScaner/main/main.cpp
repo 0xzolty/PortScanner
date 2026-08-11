@@ -12,31 +12,24 @@ struct Service {
 
 const std::array<Service, 31> services = { {
 	{20, "FTP data"},
-	{21, "FTP control"},
-	{22, "SSH"},
-	{23, "Telnet"},
-	{25, "SMTP"},
-	{53, "DNS"},
-	{80, "HTTP"},
-	{110, "POP3"},
-	{111, "RPCbind"},
-	{135, "Microsoft RPC"},
+	{21, "FTP control"}, 
+	{22, "SSH"}, {23, "Telnet"},
+	{25, "SMTP"}, {53, "DNS"}, 
+	{80, "HTTP"}, {110, "POP3"},
+	{111, "RPCbind"}, {135, "Microsoft RPC"},
 	{139, "NetBIOS Session"},
-	{143, "IMAP"},
-	{389, "LDAP"},
-	{443, "HTTPS"},
-	{445, "SMB"},
-	{465, "SMTPS"},
-	{587, "SMTP Submission"},
+	{143, "IMAP"}, {389, "LDAP"}, 
+	{443, "HTTPS"}, {445, "SMB"},
+	{465, "SMTPS"}, {587, "SMTP Submission"}, 
 	{636, "LDAPS"},
-	{993, "IMAPS"},
-	{995, "POP3S"},
+	{993, "IMAPS"}, 
+	{995, "POP3S"}, 
 	{1433, "Microsoft SQL Server"},
 	{1521, "Oracle Database"},
-	{2049, "NFS"},
+	{2049, "NFS"}, 
 	{3306, "MySQL"},
-	{3389, "RDP"},
-	{5432, "PostgreSQL"},
+	{3389, "RDP"}, 
+	{5432, "PostgreSQL"}, 
 	{5900, "VNC"},
 	{6379, "Redis"},
 	{8080, "HTTP alternative"},
@@ -50,207 +43,231 @@ void ServiceCheck(int port) {
 	for (const Service& service : services) {
 		if (service.port == port) {
 			std::cout << "suggested service: " << service.name << std::endl << std::endl;
-
 			return;
 		}
 	}
 
-	std::cout << "suggested service: unknown"
-		<< std::endl << std::endl;
+	std::cout << "suggested service: unknown" << std::endl << std::endl;
+}
+
+enum class PortStatus {
+	Open,
+	Closed,
+	Timeout,
+	Unknown
+};
+
+PortStatus ScanPort(sockaddr_in target, int port, int speed) {
+	// initialize socket with ipv4, reliable transmission, tcp and error check
+
+	SOCKET soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (soc == INVALID_SOCKET) {
+		return PortStatus::Unknown;
+	}
+
+	// setting socket in non blocking mode
+
+	u_long nonBlocking = 1;
+	int nonblockingsoc = ioctlsocket(soc, FIONBIO, &nonBlocking);
+
+	if (nonblockingsoc == SOCKET_ERROR) {
+		closesocket(soc);
+		return PortStatus::Unknown;
+	}
+
+	// create target virable with sockaddr_in
+
+	target.sin_port = htons(static_cast<u_short>(port));
+
+	// establish connection check if port is open
+
+	int con = connect(soc, (sockaddr*)&target, sizeof(target));
+
+	if (con == 0) {
+		closesocket(soc);
+		return PortStatus::Open;
+	}
+
+	int errorCode = WSAGetLastError();
+
+	if (errorCode == WSAECONNREFUSED) {
+		closesocket(soc);
+		return PortStatus::Closed;
+	}
+
+	if (errorCode != WSAEWOULDBLOCK && errorCode != WSAEINPROGRESS) {
+		closesocket(soc);
+		return PortStatus::Unknown;
+	}
+
+	fd_set writeSet;
+	fd_set errorSet;
+	FD_ZERO(&writeSet);
+	FD_ZERO(&errorSet);
+	FD_SET(soc, &writeSet);
+	FD_SET(soc, &errorSet);
+
+	timeval timeout{};
+	timeout.tv_sec = speed;
+	timeout.tv_usec = 0;
+
+	int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
+
+	if (selectResult == 0) {
+		closesocket(soc);
+		return PortStatus::Timeout;
+	}
+
+	if (selectResult == SOCKET_ERROR) {
+		closesocket(soc);
+		return PortStatus::Unknown;
+	}
+
+	int SError = 0;
+	int SErrorSize = sizeof(SError);
+	int getResult = getsockopt(soc, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&SError), &SErrorSize);
+
+	closesocket(soc);
+
+	if (getResult == SOCKET_ERROR) {
+		return PortStatus::Unknown;
+	}
+
+	if (SError == 0) {
+		return PortStatus::Open;
+	}
+
+	if (SError == WSAECONNREFUSED) {
+		return PortStatus::Closed;
+	}
+
+	return PortStatus::Unknown;
 }
 
 int main() {
 	WSADATA wsaData;
-	
+
 	int open = 0;
 	int close = 0;
 	int timeoutCount = 0;
-	
-	int speed  = 0;
+	int unknownCount = 0;
+	int speed = 0;
 
 	// initialize Winsock 2.2 result holds the error code
 
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
 
-	// check if winsock work 
+	// check if winsock work
 
 	if (result != 0) {
 		std::cerr << "fail ,fail code : " << result << std::endl;
-		getchar();
 		return 1;
 	}
 
-	// geting port to scan from user 
+	// geting port to scan from user
 
 	int portfrom, portto;
 
 	std::cout << "give 1st port to scan : " << std::endl;
-	std::cin >> portfrom;
+	if (!(std::cin >> portfrom)) {
+		std::cerr << "wrong port, please enter a number" << std::endl;
+		WSACleanup();
+		return 1;
+	}
 
 	std::cout << "give last port to scan : " << std::endl;
-	std::cin >> portto;
+	if (!(std::cin >> portto)) {
+		std::cerr << "wrong port, please enter a number" << std::endl;
+		WSACleanup();
+		return 1;
+	}
 
 	std::cout << "chose speed of the scan from 1 to 10s : ";
-	std::cin >> speed;
+	if (!(std::cin >> speed)) {
+		std::cerr << "wrong timeout, please enter a number" << std::endl;
+		WSACleanup();
+		return 1;
+	}
+
 	if (speed < 1 || speed > 10) {
 		std::cout << "wrong speed (1-10s) : " << std::endl;
-
 		WSACleanup();
-		getchar();
-		return 0;
+		return 1;
 	}
-	// chose destenity 
+
+	// chose destenity
 
 	std::string ip_port;
 
-	// geting ip addres to scan from uuser 
+	// geting ip addres to scan from uuser
 
-	std::cout << "ip addres in format : '127.0.0.1'" << std::endl;
-	std::cin >> ip_port;
+	std::cout << "IP address or host name (e.g. '127.0.0.1' or 'localhost'):" << std::endl;
+	if (!(std::cin >> ip_port)) {
+		std::cerr << "wrong IP address input" << std::endl;
+		WSACleanup();
+		return 1;
+	}
 
-	if (portfrom < 1 || portto > 65535 || portfrom > portto) {
+	if (portfrom < 1 || portfrom > 65535 || portto < 1 || portto > 65535 || portfrom > portto) {
 		std::cout << "wrong port must be in range of 1 - 65535" << std::endl;
 		WSACleanup();
 		return 1;
 	}
-	sockaddr_in target{};
-	target.sin_family = AF_INET;
 
-	int addrResult = inet_pton(AF_INET, ip_port.c_str(), &target.sin_addr);
+	addrinfo hints{};
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
 
-	// error / user issue check 
+	addrinfo* addressList = nullptr;
+	int addrResult = getaddrinfo(ip_port.c_str(), nullptr, &hints, &addressList);
 
-	if (addrResult == 0) {
-		std::cerr << "wrong ip format, please put correct one eg. 127.0.0.1" << std::endl;
+	// error / user issue check
 
+	if (addrResult != 0 || addressList == nullptr) {
+		std::cerr << "could not resolve address: " << gai_strerrorA(addrResult) << std::endl;
 		WSACleanup();
 		return 1;
 	}
-	else if (addrResult == -1) {
-		std::cerr << "error: " << WSAGetLastError() << std::endl;
 
-		
-		WSACleanup();
-		return 1;
-	}
+	sockaddr_in target = *reinterpret_cast<sockaddr_in*>(addressList->ai_addr);
+	freeaddrinfo(addressList);
 
 	for (int port = portfrom; port <= portto; ++port) {
 		std::cout << "scaning port " << port << std::endl;
 
-		// initialize socket with ipv4, reliable transmission, tcp and error check
+		PortStatus status = ScanPort(target, port, speed);
 
-		SOCKET soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (soc == INVALID_SOCKET) {
-			std::cerr << "fail to connect ,fail code : " << WSAGetLastError() << std::endl;
-
-			WSACleanup();
-			return 1;
+		if (status == PortStatus::Open) {
+			std::cout << "port " << port << " open" << std::endl;
+			open++;
+			ServiceCheck(port);
 		}
-		
-		// setting socket in non blocking mode
-
-		u_long nonBlocking = 1;
-		int nonblockingsoc = ioctlsocket(soc, FIONBIO, &nonBlocking);
-
-		if (nonblockingsoc == SOCKET_ERROR) {
-			std::cerr << "error" << WSAGetLastError() << std::endl;
-			
-			closesocket(soc);
-			WSACleanup();
-			getchar();
-			return 0;
+		else if (status == PortStatus::Closed) {
+			std::cout << "port " << port << " closed" << std::endl << std::endl;
+			close++;
 		}
-
-		// create target virable with sockaddr_in 
-
-		target.sin_port = htons(port);
-
-		// establish connection check if port is open 
-
-		int con = connect(soc, (sockaddr*)&target, sizeof(target));
-
-		if (con == SOCKET_ERROR) {
-			int errorCode = WSAGetLastError();
-
-			if (errorCode == WSAEWOULDBLOCK) {
-
-				fd_set writeSet;
-				fd_set errorSet;
-				FD_ZERO(&writeSet);
-				FD_ZERO(&errorSet);
-				FD_SET(soc, &writeSet);
-				FD_SET(soc, &errorSet);
-
-				timeval timeout{};
-				timeout.tv_sec = speed;
-				timeout.tv_usec = 0;
-
-				int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
-
-				if (selectResult == 0) {
-					std::cout << "port " << port << " timeout / filtered" << std::endl << std::endl;
-					timeoutCount++;
-				}
-				else if (selectResult == SOCKET_ERROR) {
-					std::cerr << "select error: " << WSAGetLastError() << std::endl << std::endl;
-				}
-				else {
-
-					int SError = 0;
-					int SErrorSize = sizeof(SError);
-					int getResult = getsockopt(soc, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&SError), &SErrorSize);
-
-					if (getResult == SOCKET_ERROR) {
-						std::cerr << "getsockopt error: " << WSAGetLastError() << std::endl;
-					}
-					else if (SError == 0) {
-						std::cout << "port " << port << " open" << std::endl  ;
-						open++;
-						ServiceCheck(port);
-						
-					}
-					else if (SError == WSAECONNREFUSED) {
-						std::cout << "port " << port << " closed" << std::endl;
-						close++;
-					}
-					else {
-						std::cout << "port " << port << " unknown error: " << SError << std::endl;
-					}
-				}
-			}
-			else if (errorCode == WSAECONNREFUSED) {
-				std::cout << "port " << port << " closed" << std::endl << std::endl;
-				close++;
-			
-			}
-			else {
-				std::cout << "port " << port << " unknown error: " << errorCode << std::endl << std::endl;
-			}
-			
-			}
-			else {
-				std::cout << "port " << port << " open" << std::endl << std::endl;
-				open++;
-				ServiceCheck(port);
-
-			}
-
-		// close socket
-
-		closesocket(soc);
+		else if (status == PortStatus::Timeout) {
+			std::cout << "port " << port << " timeout / filtered" << std::endl << std::endl;
+			timeoutCount++;
+		}
+		else {
+			std::cout << "port " << port << " unknown error" << std::endl << std::endl;
+			unknownCount++;
+		}
 	}
-	
-	// timeout , close , open ports count 
+
+	// timeout , close , open ports count
 
 	std::cout << "port(s) open : " << open << std::endl;
-	std::cout << "port(s) closed : " << close << std::endl; 
+	std::cout << "port(s) closed : " << close << std::endl;
 	std::cout << "total ports scanned : " << portto - portfrom + 1 << std::endl;
-	std::cout << "total timeouted port(s) : " << timeoutCount << std::endl; 
-	
-	// clean socket api 
+	std::cout << "total timeouted port(s) : " << timeoutCount << std::endl;
+	std::cout << "total unknown port(s) : " << unknownCount << std::endl;
+
+	// clean socket api
 
 	WSACleanup();
 
-	getchar();
 	return 0;
 }
