@@ -4,23 +4,38 @@
 #include <iostream>
 #include <string>
 #include <array>
+#include <vector>
 
 struct Service {
 	int port;
 	const char* name;
 };
 
+struct PendingPort {
+	SOCKET socket;
+	int port;
+};
+
+std::vector<PendingPort> pending;
+
 const std::array<Service, 31> services = { {
 	{20, "FTP data"},
 	{21, "FTP control"}, 
-	{22, "SSH"}, {23, "Telnet"},
-	{25, "SMTP"}, {53, "DNS"}, 
-	{80, "HTTP"}, {110, "POP3"},
-	{111, "RPCbind"}, {135, "Microsoft RPC"},
+	{22, "SSH"}, 
+	{23, "Telnet"},
+	{25, "SMTP"},
+	{53, "DNS"}, 
+	{80, "HTTP"}, 
+	{110, "POP3"},
+	{111, "RPCbind"},
+	{135, "Microsoft RPC"},
 	{139, "NetBIOS Session"},
-	{143, "IMAP"}, {389, "LDAP"}, 
-	{443, "HTTPS"}, {445, "SMB"},
-	{465, "SMTPS"}, {587, "SMTP Submission"}, 
+	{143, "IMAP"}, 
+	{389, "LDAP"}, 
+	{443, "HTTPS"}, 
+	{445, "SMB"},
+	{465, "SMTPS"}, 
+	{587, "SMTP Submission"}, 
 	{636, "LDAPS"},
 	{993, "IMAPS"}, 
 	{995, "POP3S"}, 
