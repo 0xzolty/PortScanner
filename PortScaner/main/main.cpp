@@ -5,6 +5,7 @@
 #include <string>
 #include <array>
 #include <vector>
+#include <chrono>
 
 struct Service {
 	int port;
@@ -14,9 +15,8 @@ struct Service {
 struct PendingPort {
 	SOCKET socket;
 	int port;
+	std::chrono::steady_clock::time_point startedAt;
 };
-
-std::vector<PendingPort> pending;
 
 const std::array<Service, 31> services = { {
 	{20, "FTP data"},
@@ -24,7 +24,7 @@ const std::array<Service, 31> services = { {
 	{22, "SSH"}, 
 	{23, "Telnet"},
 	{25, "SMTP"},
-	{53, "DNS"}, 
+	{53, "DNS"},
 	{80, "HTTP"}, 
 	{110, "POP3"},
 	{111, "RPCbind"},
@@ -72,92 +72,6 @@ enum class PortStatus {
 	Unknown
 };
 
-PortStatus ScanPort(sockaddr_in target, int port, int speed) {
-	// initialize socket with ipv4, reliable transmission, tcp and error check
-
-	SOCKET soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (soc == INVALID_SOCKET) {
-		return PortStatus::Unknown;
-	}
-
-	// setting socket in non blocking mode
-
-	u_long nonBlocking = 1;
-	int nonblockingsoc = ioctlsocket(soc, FIONBIO, &nonBlocking);
-
-	if (nonblockingsoc == SOCKET_ERROR) {
-		closesocket(soc);
-		return PortStatus::Unknown;
-	}
-
-	// create target virable with sockaddr_in
-
-	target.sin_port = htons(static_cast<u_short>(port));
-
-	// establish connection check if port is open
-
-	int con = connect(soc, (sockaddr*)&target, sizeof(target));
-
-	if (con == 0) {
-		closesocket(soc);
-		return PortStatus::Open;
-	}
-
-	int errorCode = WSAGetLastError();
-
-	if (errorCode == WSAECONNREFUSED) {
-		closesocket(soc);
-		return PortStatus::Closed;
-	}
-
-	if (errorCode != WSAEWOULDBLOCK && errorCode != WSAEINPROGRESS) {
-		closesocket(soc);
-		return PortStatus::Unknown;
-	}
-
-	fd_set writeSet;
-	fd_set errorSet;
-	FD_ZERO(&writeSet);
-	FD_ZERO(&errorSet);
-	FD_SET(soc, &writeSet);
-	FD_SET(soc, &errorSet);
-
-	timeval timeout{};
-	timeout.tv_sec = speed;
-	timeout.tv_usec = 0;
-
-	int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
-
-	if (selectResult == 0) {
-		closesocket(soc);
-		return PortStatus::Timeout;
-	}
-
-	if (selectResult == SOCKET_ERROR) {
-		closesocket(soc);
-		return PortStatus::Unknown;
-	}
-
-	int SError = 0;
-	int SErrorSize = sizeof(SError);
-	int getResult = getsockopt(soc, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&SError), &SErrorSize);
-
-	closesocket(soc);
-
-	if (getResult == SOCKET_ERROR) {
-		return PortStatus::Unknown;
-	}
-
-	if (SError == 0) {
-		return PortStatus::Open;
-	}
-
-	if (SError == WSAECONNREFUSED) {
-		return PortStatus::Closed;
-	}
-
-	return PortStatus::Unknown;
-}
 
 int main() {
 	WSADATA wsaData;
@@ -228,7 +142,6 @@ int main() {
 		WSACleanup();
 		return 1;
 	}
-
 	addrinfo hints{};
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
@@ -245,14 +158,10 @@ int main() {
 		return 1;
 	}
 
-	sockaddr_in target = *reinterpret_cast<sockaddr_in*>(addressList->ai_addr);
+	sockaddr_in target = *reinterpret_cast<const sockaddr_in*>(addressList->ai_addr);
 	freeaddrinfo(addressList);
 
-	for (int port = portfrom; port <= portto; ++port) {
-		std::cout << "scaning port " << port << std::endl;
-
-		PortStatus status = ScanPort(target, port, speed);
-
+	auto reportStatus = [&](int port, PortStatus status) {
 		if (status == PortStatus::Open) {
 			std::cout << "port " << port << " open" << std::endl;
 			open++;
@@ -269,6 +178,133 @@ int main() {
 		else {
 			std::cout << "port " << port << " unknown error" << std::endl << std::endl;
 			unknownCount++;
+		}
+	};
+
+	constexpr std::size_t maxPendingPorts = 5;
+	std::vector<PendingPort> pending;
+	int nextPort = portfrom;
+
+	while (nextPort <= portto || !pending.empty()) {
+		while (pending.size() < maxPendingPorts && nextPort <= portto) {
+			const int port = nextPort++;
+			std::cout << "scaning port " << port << std::endl;
+
+			SOCKET soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (soc == INVALID_SOCKET) {
+				reportStatus(port, PortStatus::Unknown);
+				continue;
+			}
+
+			u_long nonBlocking = 1;
+			int nonBlockingResult = ioctlsocket(soc, FIONBIO, &nonBlocking);
+			if (nonBlockingResult == SOCKET_ERROR) {
+				closesocket(soc);
+				reportStatus(port, PortStatus::Unknown);
+				continue;
+			}
+
+			sockaddr_in portTarget = target;
+			portTarget.sin_port = htons(static_cast<u_short>(port));
+			auto startedAt = std::chrono::steady_clock::now();
+			int connectResult = connect(soc, reinterpret_cast<sockaddr*>(&portTarget), sizeof(portTarget));
+
+			if (connectResult == 0) {
+				closesocket(soc);
+				reportStatus(port, PortStatus::Open);
+				continue;
+			}
+
+			int errorCode = WSAGetLastError();
+			if (errorCode == WSAECONNREFUSED) {
+				closesocket(soc);
+				reportStatus(port, PortStatus::Closed);
+			}
+			else if (errorCode == WSAEWOULDBLOCK || errorCode == WSAEINPROGRESS) {
+				pending.push_back({ soc, port, startedAt });
+			}
+			else {
+				closesocket(soc);
+				reportStatus(port, PortStatus::Unknown);
+			}
+		}
+
+		if (pending.empty()) {
+			continue;
+		}
+
+		fd_set writeSet;
+		fd_set errorSet;
+		FD_ZERO(&writeSet);
+		FD_ZERO(&errorSet);
+
+		auto earliestDeadline = pending.front().startedAt + std::chrono::seconds(speed);
+		for (const PendingPort& pendingPort : pending) {
+			FD_SET(pendingPort.socket, &writeSet);
+			FD_SET(pendingPort.socket, &errorSet);
+
+			auto deadline = pendingPort.startedAt + std::chrono::seconds(speed);
+			if (deadline < earliestDeadline) {
+				earliestDeadline = deadline;
+			}
+		}
+
+		auto now = std::chrono::steady_clock::now();
+		auto remaining = earliestDeadline - now;
+		timeval timeout{};
+		if (remaining > std::chrono::steady_clock::duration::zero()) {
+			auto timeoutMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(remaining);
+			if (std::chrono::duration_cast<std::chrono::steady_clock::duration>(timeoutMicroseconds) < remaining) {
+				++timeoutMicroseconds;
+			}
+
+			timeout.tv_sec = static_cast<long>(timeoutMicroseconds.count() / 1000000);
+			timeout.tv_usec = static_cast<long>(timeoutMicroseconds.count() % 1000000);
+		}
+
+		int selectResult = select(0, nullptr, &writeSet, &errorSet, &timeout);
+		if (selectResult == SOCKET_ERROR) {
+			for (const PendingPort& pendingPort : pending) {
+				closesocket(pendingPort.socket);
+				reportStatus(pendingPort.port, PortStatus::Unknown);
+			}
+			pending.clear();
+			continue;
+		}
+
+		now = std::chrono::steady_clock::now();
+		for (auto it = pending.begin(); it != pending.end();) {
+			bool socketReady = FD_ISSET(it->socket, &writeSet) || FD_ISSET(it->socket, &errorSet);
+			bool timedOut = now - it->startedAt >= std::chrono::seconds(speed);
+			if (!socketReady && !timedOut) {
+				++it;
+				continue;
+			}
+
+			PortStatus status = PortStatus::Timeout;
+			if (socketReady) {
+				int socketError = 0;
+				int socketErrorSize = sizeof(socketError);
+				int socketResult = getsockopt(it->socket, SOL_SOCKET, SO_ERROR,
+					reinterpret_cast<char*>(&socketError), &socketErrorSize);
+
+				if (socketResult == SOCKET_ERROR) {
+					status = PortStatus::Unknown;
+				}
+				else if (socketError == 0) {
+					status = PortStatus::Open;
+				}
+				else if (socketError == WSAECONNREFUSED) {
+					status = PortStatus::Closed;
+				}
+				else {
+					status = PortStatus::Unknown;
+				}
+			}
+
+			closesocket(it->socket);
+			reportStatus(it->port, status);
+			it = pending.erase(it);
 		}
 	}
 
